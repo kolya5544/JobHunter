@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "JobHunter": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "API_TOKEN": ""
+      }
+    }
+  }
+}
