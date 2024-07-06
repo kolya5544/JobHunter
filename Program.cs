@@ -137,6 +137,13 @@ namespace JobHunter
                 if (cmd == "/reset")
                 {
                     us.SetUserState(msg.From, UserStateEnum.INITIAL);
+                    var u = us.GetUser(msg.From.Id);
+                    u.associatedJson = null;
+                    u.CurrencyFilter = null;
+                    u.ExperienceFilter = null;
+                    u.CityFilter = null;
+                    u.ToFilter = null;
+                    u.FromFilter = null;
                     await HandleNewMessage(client, update, token); // cry about it
                     return;
                 }
@@ -250,8 +257,13 @@ namespace JobHunter
         {
             using (var db = new MySQL())
             {
-                var applicable = db.Vacancies.Where(a => a.Name.Contains(name, StringComparison.OrdinalIgnoreCase) || a.Responsibility.Contains(name, StringComparison.OrdinalIgnoreCase) || a.Requirements.Contains(name, StringComparison.OrdinalIgnoreCase)
-                                                            && (DateTimeOffset.UtcNow.ToUnixTimeSeconds() - a.Timestamp) < 24 * 3600).ToList(); // удаление через 24 часа
+                var applicable = db.Vacancies.Where(a => a.Name.Contains(name, StringComparison.OrdinalIgnoreCase) || a.Responsibility.Contains(name, StringComparison.OrdinalIgnoreCase) || a.Requirements.Contains(name, StringComparison.OrdinalIgnoreCase)).ToList();
+
+                // удаление через 24 часа
+                var toRemove = applicable.Where((z) => (DateTimeOffset.UtcNow.ToUnixTimeSeconds() - z.Timestamp) >= 24 * 3600).ToList();
+                db.Vacancies.RemoveRange(toRemove);
+                foreach (var it in toRemove) applicable.Remove(it);
+                await db.SaveChangesAsync();
 
                 if (applicable is not null && applicable.Count > 0)
                 {
