@@ -3,7 +3,9 @@
     "JobHunter": {
       "commandName": "Project",
       "environmentVariables": {
-        "API_TOKEN": ""
+        "API_TOKEN": "",
+        "HH_TOKEN": "",
+        "DB_STRING": ""
       }
     }
   }
