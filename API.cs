@@ -49,15 +49,16 @@ namespace JobHunter
 
                 foreach (var i in aJson)
                 {
-                    areaKVP.Add(i.Name, i.Id);
+                    if (!areaKVP.ContainsKey(i.Name)) areaKVP.Add(i.Name, i.Id);
 
                     i.Areas.ForEach(x =>
                     {
-                        areaKVP.Add(x.Name, x.Id);
+                        if (!areaKVP.ContainsKey(x.Name)) areaKVP.Add(x.Name, x.Id);
+
 
                         x.Areas.ForEach(y =>
                         {
-                            areaKVP.Add(y.Name, y.Id);
+                            if (!areaKVP.ContainsKey(y.Name)) areaKVP.Add(y.Name, y.Id);
                         });
                     });
                 }
