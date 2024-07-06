@@ -45,16 +45,20 @@ namespace JobHunter
                 var areasJson = await areaResp.Content.ReadAsStringAsync();
 
                 // парсим справочник
-                var aJson = JsonConvert.DeserializeObject<AreaJson>(areasJson);
-                areaKVP.Add(aJson.Name, aJson.Id);
+                var aJson = JsonConvert.DeserializeObject<List<AreaJson>>(areasJson);
 
-                foreach (var i in aJson.Areas)
+                foreach (var i in aJson)
                 {
                     areaKVP.Add(i.Name, i.Id);
 
                     i.Areas.ForEach(x =>
                     {
                         areaKVP.Add(x.Name, x.Id);
+
+                        x.Areas.ForEach(y =>
+                        {
+                            areaKVP.Add(y.Name, y.Id);
+                        });
                     });
                 }
             }
