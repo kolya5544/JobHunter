@@ -12,6 +12,7 @@ namespace JobHunter
     public class RAMUser
     {
         public UserStateEnum state;
+        public string request;
         public List<VacancyDb> associatedJson = null;
         public int? FromFilter = null;
         public int? ToFilter = null;

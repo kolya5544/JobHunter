@@ -80,6 +80,7 @@ namespace JobHunter
                 var results = await ProcessVacancyDb(name);
                 var user = us.GetUser(msg.From.Id);
                 user.associatedJson = results;
+                user.request = name;
 
                 var text = CreateVacanciesText(results, msg.From.FirstName);
 
@@ -139,6 +140,7 @@ namespace JobHunter
                     us.SetUserState(msg.From, UserStateEnum.INITIAL);
                     var u = us.GetUser(msg.From.Id);
                     u.associatedJson = null;
+                    u.request = null;
                     u.CurrencyFilter = null;
                     u.ExperienceFilter = null;
                     u.CityFilter = null;
@@ -214,16 +216,14 @@ namespace JobHunter
                 var user = us.GetUser(msg.From.Id);
                 var results = user.associatedJson;
 
-                var filtered = results.Where((z) =>
-                {
-                    var cityMatch = user.CityFilter is null ? true : z.CityName is not null && z.CityName.Equals(user.CityFilter, StringComparison.OrdinalIgnoreCase);
-                    var fromMatch = user.FromFilter is null ? true : (z.SalaryFrom.HasValue ? z.SalaryFrom >= user.FromFilter.Value : false);
-                    var toMatch = user.ToFilter is null ? true : (z.SalaryTo.HasValue ? z.SalaryTo <= user.ToFilter.Value : false);
-                    var experienceMatch = user.ExperienceFilter is null ? true : z.Experience is not null && z.Experience.Equals(user.ExperienceFilter, StringComparison.OrdinalIgnoreCase);
-                    var currencyMatch = user.CurrencyFilter is null ? true : z.SalaryCurrency is not null && z.SalaryCurrency.Equals(user.CurrencyFilter, StringComparison.OrdinalIgnoreCase);
+                var filtered = results.Where((z) => ApplyFilters(user, z)).ToList();
 
-                    return cityMatch && fromMatch && toMatch && experienceMatch && currencyMatch;
-                }).ToList();
+                // если с фильтрами в БД вакансий нет - ПЕРЕПРОВЕРИТЬ на всякий случай 0_0, спросив у АПИшки
+                if (filtered.Count < 10)
+                {
+                    var newVacancies = await ProcessVacancyDb(user.request, user.CityFilter, user.CurrencyFilter, user.ExperienceFilter, true);
+                    filtered = newVacancies.Where((z) => ApplyFilters(user, z)).ToList();
+                }
 
                 var text = CreateVacanciesText(filtered, msg.From.FirstName);
                 text += $"\r\nТекущие фильтры: <b>ГОРОД: {(user.CityFilter is null ? "❌" : user.CityFilter)}</b>, <b>ЗП ОТ: {(user.FromFilter is null ? "❌" : user.FromFilter)}</b>, <b>ЗП ДО: {(user.ToFilter is null ? "❌" : user.ToFilter)}</b>, <b>ОПЫТ: {(user.ExperienceFilter is null ? "❌" : user.ExperienceFilter)}</b>, <b>ВАЛЮТА: {(user.CurrencyFilter is null ? "❌" : user.CurrencyFilter)}</b>";
@@ -232,6 +232,17 @@ namespace JobHunter
                 us.SetUserState(msg.From, UserStateEnum.WAITING_FOR_FILTERS);
                 return;
             }
+        }
+
+        public static bool ApplyFilters(RAMUser user, VacancyDb z)
+        {
+            var cityMatch = user.CityFilter is null ? true : z.CityName is not null && z.CityName.Equals(user.CityFilter, StringComparison.OrdinalIgnoreCase);
+            var fromMatch = user.FromFilter is null ? true : (z.SalaryFrom.HasValue ? z.SalaryFrom >= user.FromFilter.Value : false);
+            var toMatch = user.ToFilter is null ? true : (z.SalaryTo.HasValue ? z.SalaryTo <= user.ToFilter.Value : false);
+            var experienceMatch = user.ExperienceFilter is null ? true : z.Experience is not null && z.Experience.Equals(user.ExperienceFilter, StringComparison.OrdinalIgnoreCase);
+            var currencyMatch = user.CurrencyFilter is null ? true : z.SalaryCurrency is not null && z.SalaryCurrency.Equals(user.CurrencyFilter, StringComparison.OrdinalIgnoreCase);
+
+            return cityMatch && fromMatch && toMatch && experienceMatch && currencyMatch;
         }
 
         public static string CreateVacanciesText(List<VacancyDb> results, string firstName)
@@ -253,25 +264,28 @@ namespace JobHunter
             return sb.ToString();
         }
 
-        public static async Task<List<VacancyDb>> ProcessVacancyDb(string name)
+        public static async Task<List<VacancyDb>> ProcessVacancyDb(string name, string? area = null, string? currency = null, string? experience = null, bool ignoreDb = false)
         {
             using (var db = new MySQL())
             {
-                var applicable = db.Vacancies.Where(a => a.Name.Contains(name, StringComparison.OrdinalIgnoreCase) || a.Responsibility.Contains(name, StringComparison.OrdinalIgnoreCase) || a.Requirements.Contains(name, StringComparison.OrdinalIgnoreCase)).ToList();
-
-                // удаление через 24 часа
-                var toRemove = applicable.Where((z) => (DateTimeOffset.UtcNow.ToUnixTimeSeconds() - z.Timestamp) >= 24 * 3600).ToList();
-                db.Vacancies.RemoveRange(toRemove);
-                foreach (var it in toRemove) applicable.Remove(it);
-                await db.SaveChangesAsync();
-
-                if (applicable is not null && applicable.Count > 0)
+                if (!ignoreDb)
                 {
-                    return applicable; // нашли в кеше - вернули
+                    var applicable = db.Vacancies.Where(a => a.Name.Contains(name, StringComparison.OrdinalIgnoreCase) || a.Responsibility.Contains(name, StringComparison.OrdinalIgnoreCase) || a.Requirements.Contains(name, StringComparison.OrdinalIgnoreCase)).ToList();
+
+                    // удаление через 24 часа
+                    var toRemove = applicable.Where((z) => (DateTimeOffset.UtcNow.ToUnixTimeSeconds() - z.Timestamp) >= 24 * 3600).ToList();
+                    db.Vacancies.RemoveRange(toRemove);
+                    foreach (var it in toRemove) applicable.Remove(it);
+                    await db.SaveChangesAsync();
+
+                    if (applicable is not null && applicable.Count > 0)
+                    {
+                        return applicable; // нашли в кеше - вернули
+                    }
                 }
 
                 // иначе идём по апи
-                var results = await api.GetVacancies(text: name);
+                var results = await api.GetVacancies(text: name, area: area, currency: currency, experience: experience);
                 var newResults = new List<VacancyDb>();
                 // ...и добавляем результаты в БД
                 foreach (var item in results.Items)
@@ -297,8 +311,8 @@ namespace JobHunter
                     if (!newResults.Any((z) => z.Id == item.Id))
                     {
                         newResults.Add(vdb);
-                        db.Add(vdb);
                     }
+                    if (db.Vacancies.Find(vdb.Id) is null) db.Add(vdb);
                 }
                 await db.SaveChangesAsync();
                 return newResults;

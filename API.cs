@@ -6,6 +6,7 @@ using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml;
 
 namespace JobHunter
 {
@@ -25,8 +26,39 @@ namespace JobHunter
             http.DefaultRequestHeaders.UserAgent.Add(new System.Net.Http.Headers.ProductInfoHeaderValue("JobHunter", "1.0.0"));
         }
 
-        public async Task<VacancyJson> GetVacancies(int page = 0, int per_page = 100, string text = null, bool getAllPages = true)
+        public async Task<VacancyJson> GetVacancies(int page = 0, int per_page = 100, string text = null, bool getAllPages = true, string? area = null, string? currency = null, string? experience = null)
         {
+            // справочник для experience
+            Dictionary<string, string> expKVP = new Dictionary<string, string>()
+            {
+                ["Нет опыта"] = "noExperience",
+                ["От 1 года до 3 лет"] = "between1And3",
+                ["От 3 до 6 лет"] = "between3And6",
+                ["Более 6 лет"] = "moreThan6"
+            };
+
+            // справочник для area
+            Dictionary<string, string> areaKVP = new Dictionary<string, string>();
+            if (area is not null)
+            {
+                var areaResp = await http.GetAsync($"{BaseURL}/areas");
+                var areasJson = await areaResp.Content.ReadAsStringAsync();
+
+                // парсим справочник
+                var aJson = JsonConvert.DeserializeObject<AreaJson>(areasJson);
+                areaKVP.Add(aJson.Name, aJson.Id);
+
+                foreach (var i in aJson.Areas)
+                {
+                    areaKVP.Add(i.Name, i.Id);
+
+                    i.Areas.ForEach(x =>
+                    {
+                        areaKVP.Add(x.Name, x.Id);
+                    });
+                }
+            }
+
             // строим список параметров
             var dict = new Dictionary<string, object>()
             {
@@ -34,6 +66,21 @@ namespace JobHunter
                 ["per_page"] = per_page,
                 ["text"] = text
             };
+
+            if (area is not null)
+            {
+                dict.Add("area", areaKVP[area]);
+            }
+
+            if (currency is not null)
+            {
+                dict.Add("currency", currency);
+            }
+
+            if (experience is not null)
+            {
+                dict.Add("experience", expKVP[experience]);
+            }
 
             // получаем список вакансий
             var resp = await http.GetAsync($"{BaseURL}/vacancies?{QueryString(dict)}");
