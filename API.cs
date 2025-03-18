@@ -114,14 +114,7 @@ namespace JobHunter
             return vj;
         }
 
-        private static string QueryString(IDictionary<string, object> dict)
-        {
-            var list = new List<string>();
-            foreach (var item in dict)
-            {
-                list.Add(item.Key + "=" + item.Value);
-            }
-            return string.Join("&", list);
-        }
+        private static string QueryString(IDictionary<string, object> dict) =>
+            string.Join("&", dict.Select(item => $"{item.Key}={item.Value}"));
     }
 }

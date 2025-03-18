@@ -11,16 +11,20 @@ namespace JobHunter.Database
 {
     public class MySQL : DbContext
     {
-        public string DbString = Environment.GetEnvironmentVariable("DB_STRING");
+        private readonly string _dbString;
+
+        public MySQL()
+        {
+            _dbString = Environment.GetEnvironmentVariable("DB_STRING")
+                ?? throw new InvalidOperationException("Database connection string is not set.");
+        }
+
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
             optionsBuilder.UseMySql(
-                DbString,
-                ServerVersion.AutoDetect(DbString),
-                options =>
-                {
-                    options.EnableStringComparisonTranslations();
-                }
+                _dbString,
+                ServerVersion.AutoDetect(_dbString),
+                options => options.EnableStringComparisonTranslations()
             );
         }
 
