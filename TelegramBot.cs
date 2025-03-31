@@ -220,34 +220,55 @@ namespace JobHunter
 
         public static bool ApplyFilters(RAMUser user, VacancyDb z)
         {
-            var cityMatch = user.CityFilter is null ? true : z.CityName is not null && z.CityName.Equals(user.CityFilter, StringComparison.OrdinalIgnoreCase);
-            var fromMatch = user.FromFilter is null ? true : (z.SalaryFrom.HasValue ? z.SalaryFrom >= user.FromFilter.Value : false);
-            var toMatch = user.ToFilter is null ? true : (z.SalaryTo.HasValue ? z.SalaryTo <= user.ToFilter.Value : false);
-            var experienceMatch = user.ExperienceFilter is null ? true : z.Experience is not null && z.Experience.Equals(user.ExperienceFilter, StringComparison.OrdinalIgnoreCase);
-            var currencyMatch = user.CurrencyFilter is null ? true : z.SalaryCurrency is not null && z.SalaryCurrency.Equals(user.CurrencyFilter, StringComparison.OrdinalIgnoreCase);
+            bool CheckStringFilter(string? filter, string? value) => 
+                string.IsNullOrEmpty(filter) || value?.Equals(filter, StringComparison.OrdinalIgnoreCase) == true;
+            bool CheckSalaryFilter(decimal? filter, decimal? salary, bool isGreaterThan) => 
+                !filter.HasValue || (salary.HasValue && (isGreaterThan ? salary.Value >= filter.Value : salary.Value <= filter.Value));
 
-            return cityMatch && fromMatch && toMatch && experienceMatch && currencyMatch;
+            return CheckStringFilter(user.CityFilter, z.CityName) &&
+                   CheckSalaryFilter(user.FromFilter, z.SalaryFrom, true) &&
+                   CheckSalaryFilter(user.ToFilter, z.SalaryTo, false) &&
+                   CheckStringFilter(user.ExperienceFilter, z.Experience) &&
+                   CheckStringFilter(user.CurrencyFilter, z.SalaryCurrency);
         }
 
         public static string CreateVacanciesText(List<VacancyDb> results, string firstName)
         {
-            bool isOverflow = results.Count >= 2000;
-            StringBuilder sb = new StringBuilder($"✅ <i>{firstName}</i>, было найдено <b>{(isOverflow ? "более 2000" : results.Count)} подходящих тебе вакансий</b>. Вот некоторые из них:\r\n");
+            if (string.IsNullOrEmpty(firstName)) throw new ArgumentNullException(nameof(firstName));
+
+            var sb = new StringBuilder();
+            sb.AppendLine(GetHeaderMessage(firstName, results.Count));
+
             for (int i = 0; i < Math.Min(10, results.Count); i++)
             {
-                var vacancy = results[i];
-
-                string? cityIfExists = (vacancy.AddressRaw is null) ? null : $" в районе <a href=\"https://yandex.ru/maps/?mode=search&text={vacancy.AddressRaw}\">{vacancy.AddressRaw}</a>";
-                string? salaryIfSpecified = (vacancy.SalaryCurrency is null) ? "Зарплата не указана." : $"Зарплата{(vacancy.SalaryFrom is null ? null : $" от {vacancy.SalaryFrom}")}{(vacancy.SalaryTo is null ? null : $" до {vacancy.SalaryTo}")} {vacancy.SalaryCurrency}.";
-
-                sb.AppendLine($"[#{i + 1}] \"<b>{vacancy.Name}</b>\"{cityIfExists} @ <i>\"<a href=\"{vacancy.EmployerUrl}\">{vacancy.EmployerName}</a>\"</i>. {salaryIfSpecified} Опыт: <i>{vacancy.Experience}</i>");
+                sb.AppendLine(FormatVacancyMessage(results[i], i + 1));
             }
 
-            sb.AppendLine($"\r\n💡 Вы можете <i>отфильтровать</i> результаты поиска по <b>зарплате от /set_from</b>, <b>зарплате до /set_to</b>, <b>городу /set_city</b>, <b>валюте ЗП /set_currency</b> и <b>опыту /set_experience</b>. Используйте <b>/reset</b> чтобы выполнить новый поиск, или <b>/clear</b> для очистки кеша и поиска с нуля.");
-            //sb.AppendLine($"🎯 Альтернативно, вы можете выбрать вакансию из представленных, используя <b>/select</b>"); 
-            // :)
+            sb.AppendLine(GetFooterMessage());
             return sb.ToString();
         }
+
+        private static string GetHeaderMessage(string firstName, int vacancyCount)
+        {
+            bool isOverflow = vacancyCount >= 2000;
+            return $"✅ <i>{firstName}</i>, было найдено <b>{(isOverflow ? "более 2000" : vacancyCount)} подходящих тебе вакансий</b>. Вот некоторые из них:\r\n";
+        }
+
+        private static string FormatVacancyMessage(VacancyDb vacancy, int index)
+        {
+            var cityIfExists = string.IsNullOrEmpty(vacancy.AddressRaw) ? string.Empty : $" в районе <a href=\"https://yandex.ru/maps/?mode=search&text={vacancy.AddressRaw}\">{vacancy.AddressRaw}</a>";
+            var salaryIfSpecified = string.IsNullOrEmpty(vacancy.SalaryCurrency)
+                                    ? "Зарплата не указана."
+                                    : $"Зарплата{(vacancy.SalaryFrom.HasValue ? $" от {vacancy.SalaryFrom}" : string.Empty)}{(vacancy.SalaryTo.HasValue ? $" до {vacancy.SalaryTo}" : string.Empty)} {vacancy.SalaryCurrency}.";
+
+            return $"[#{index}] \"<b>{vacancy.Name}</b>\"{cityIfExists} @ <i>\"<a href=\"{vacancy.EmployerUrl}\">{vacancy.EmployerName}</a>\"</i>. {salaryIfSpecified} Опыт: <i>{vacancy.Experience}</i>";
+        }
+
+        private static string GetFooterMessage()
+        {
+            return $"\r\n💡 Вы можете <i>отфильтровать</i> результаты поиска по <b>зарплате от /set_from</b>, <b>зарплате до /set_to</b>, <b>городу /set_city</b>, <b>валюте ЗП /set_currency</b> и <b>опыту /set_experience</b>. Используйте <b>/reset</b> чтобы выполнить новый поиск, или <b>/clear</b> для очистки кеша и поиска с нуля.";
+        }
+
 
         public static async Task<List<VacancyDb>> ProcessVacancyDb(string name, string? area = null, string? currency = null, string? experience = null, bool ignoreDb = false)
         {
